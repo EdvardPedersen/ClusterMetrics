@@ -30,17 +30,13 @@ class Process:
     self.metric=metric
     self.datapoints = list()
     self.command_string = "rrdtool fetch " + rootrrd + host.name + "/" + metric + ".rrd AVERAGE -e now -s end-60s"
-    print self.command_string
     self.host_process = subprocess.Popen( shlex.split(self.command_string) ,stdout=subprocess.PIPE)
 
   def get_data(self):
     hosts, herr = self.host_process.communicate()
     self.resultstring = str(hosts)
-#    print self.resultstring
     splitLines = self.resultstring.split("\n")
-    #print splitLines
     for line in splitLines:
-      #print line
       if len(line.strip()) < 1:
         continue
       splitString = line.split(" ",1)
@@ -48,7 +44,6 @@ class Process:
         print("Was not able to split: " + line)
         continue
       self.datapoints.append(DataPoint(host=self.host, metric=self.metric, time=splitString[0], value=splitString[1]))
-      #print splitString[0]
 
   def print_data(self):
     for point in self.datapoints:
@@ -81,28 +76,6 @@ def main(args):
   for process in processes:
     process.get_data()
     process.print_data()
-
-def add_metric(metric_name, command_queue):
-  command_queue[metric_name] = ("rrdtool fetch /var/lib/ganglia/rrds/ice2/compute-0-0.local/cpu_idle.rrd AVERAGE -s end-2d -e now")
-  
-def execute(command_queue, timeFile, version):
-  totalTimeStart = time.time()
-  for line in command_queue:
-    print "Executing command: " + line
-    startTime = time.time()
-    if (call(line, shell=True) != 0):
-      print "Line " + line + " crashed, aborting..."
-      exit(1)
-    else:
-      elapsedTime = time.time() - startTime
-      print "Completed in " + str(elapsedTime) + " seconds."
-      timeFile.write(version + " \nLine: " + line + " \nTime: " + str(elapsedTime) +"\n")
-      timeFile.flush()
-      os.fsync(timeFile)
-    totalTimeEnd = time.time()
-    timeFile.write(version + " total " + str(totalTimeEnd-totalTimeStart) + "\n\n\n")
-    timeFile.flush()
-    os.fsync(timeFile)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
