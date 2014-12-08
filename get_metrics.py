@@ -6,12 +6,72 @@ import ConfigParser
 from collections import deque
 import subprocess
 import shlex
+import numpy
+
+egg_path='/home/epe005/gepan_experiments/helper_scripts/ClusterMetrics/testmat/matplotlib-1.4.2/distribute-0.6.28-py2.6.egg'
+egg_path2='/home/epe005/gepan_experiments/helper_scripts/ClusterMetrics/testmat/matplotlib-1.4.2/numpy-1.9.1/dist/numpy-1.9.1-py2.6-linux-x86_64.egg'
+sys.path.append(egg_path)
+sys.path.append(egg_path2)
+from matplotlib import pyplot
+from matplotlib import dates
+#import numpy
+
+  
+
+class Output:
+  def __init__(self, format="text", processes=list()):
+    self.input = processes
+    self.format = format
+
+  def generate(self):
+    if(self.format == "text"):
+      self._gettext()
+    elif(self.format == "png"):
+      self._getgraph()
+
+  def _gettext(self):
+    for entry in self.input:
+      for datapoint in entry.datapoints:
+        print datapoint.host.name + " " + datapoint.value
+
+  def _getgraph(self):
+    metricLists = dict()
+    for entry in self.input:
+      #Each entry contains datapoints for one metric, for one host
+      if(entry.metric.name not in metricLists):
+        metricLists[entry.metric.name] = dict()
+      if(entry.host.name not in metricLists[entry.metric.name]):
+        metricLists[entry.metric.name][entry.host.name] = (list(), list())
+      for datapoint in entry.datapoints:
+        try:
+          metricLists[entry.metric.name][entry.host.name][0].append(dates.epoch2num(int(datapoint.time.strip(':'))))
+          metricLists[entry.metric.name][entry.host.name][1].append(float(datapoint.value))
+        except Exception:
+          print "Ignored datapoint due to exception: " + str(sys.exc_info())
+          continue
+
+    for key in metricLists.keys():
+      print key
+      fig = pyplot.figure()
+      for keyHost in metricLists[key].keys():
+        print keyHost
+        pyplot.plot_date(metricLists[key][keyHost][0], metricLists[key][keyHost][1], '-', label=keyHost)
+      pyplot.ylabel("Metric: " + key)
+      pyplot.xlabel("Time")
+      pyplot.xticks(rotation='vertical')
+      pyplot.gcf().subplots_adjust(bottom=0.15)
+      fig.autofmt_xdate()
+      pyplot.ticklabel_format()
+      pyplot.gca().get_xaxis().get_major_formatter().scaled[1/(24.*60.)] = '%H:%M:%S'
+      pyplot.legend()
+      pyplot.savefig("figure-" + key + ".png")
+      pyplot.close()
 
 class Metric:
-  def __init__(self, name=""):
+  def __init__(self, name="", start="end-6000s", end="now"):
     self.name = name
-    self.start = "0"
-    self.stop = "now"
+    self.start = start
+    self.stop = end
 
 class Host:
   def __init__(self,name=""):
@@ -29,7 +89,7 @@ class Process:
     self.host=host
     self.metric=metric
     self.datapoints = list()
-    self.command_string = "rrdtool fetch " + rootrrd + host.name + "/" + metric + ".rrd AVERAGE -e now -s end-60s"
+    self.command_string = "rrdtool fetch " + rootrrd + host.name + "/" + metric.name + ".rrd AVERAGE -e " + metric.stop + " -s " + metric.start
     self.host_process = subprocess.Popen( shlex.split(self.command_string) ,stdout=subprocess.PIPE)
 
   def get_data(self):
@@ -58,10 +118,10 @@ def main(args):
   metrics = list()
 
   for item, value in config.items("Hosts"):
-    hosts[item] = Host(value + ".local")
+    hosts[item] = Host(value)
 
   for item,value in config.items("Metrics"):
-    metrics.append(value)
+    metrics.append(Metric(value))
 
   rootrrdpath = config.get("Paths", "root_rrd")
 
@@ -75,7 +135,9 @@ def main(args):
 
   for process in processes:
     process.get_data()
-    process.print_data()
+
+  output = Output("png", processes)
+  output.generate()
 
 if __name__ == "__main__":
     main(sys.argv[1:])
