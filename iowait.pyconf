@@ -1,0 +1,16 @@
+modules {
+  module {
+    name = "iowait"
+    language = "python"
+  }
+}
+
+collection_group {
+  collect_every = 5
+  time_threshold = 50
+  metric {
+    name = "iowait"
+    title = "IO wait"
+    value_threshold = 10.0
+  }
+}

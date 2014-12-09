@@ -7,6 +7,7 @@ from collections import deque
 import subprocess
 import shlex
 import numpy
+import logging
 
 egg_path='/home/epe005/gepan_experiments/helper_scripts/ClusterMetrics/testmat/matplotlib-1.4.2/distribute-0.6.28-py2.6.egg'
 egg_path2='/home/epe005/gepan_experiments/helper_scripts/ClusterMetrics/testmat/matplotlib-1.4.2/numpy-1.9.1/dist/numpy-1.9.1-py2.6-linux-x86_64.egg'
@@ -14,10 +15,11 @@ sys.path.append(egg_path)
 sys.path.append(egg_path2)
 from matplotlib import pyplot
 from matplotlib import dates
+from optparse import OptionParser
+from dateutil.tz import *
 #import numpy
 
   
-
 class Output:
   def __init__(self, format="text", processes=list()):
     self.input = processes
@@ -47,23 +49,24 @@ class Output:
           metricLists[entry.metric.name][entry.host.name][0].append(dates.epoch2num(int(datapoint.time.strip(':'))))
           metricLists[entry.metric.name][entry.host.name][1].append(float(datapoint.value))
         except Exception:
-          print "Ignored datapoint due to exception: " + str(sys.exc_info())
+          logging.warning("Ignored datapoint due to exception: " + str(sys.exc_info()))
           continue
+    self._showgraph(metricLists)
 
+  def _showgraph(self, metricLists):
     for key in metricLists.keys():
-      print key
-      fig = pyplot.figure()
+      fig = pyplot.figure(figsize=(10,5))
       for keyHost in metricLists[key].keys():
-        print keyHost
-        pyplot.plot_date(metricLists[key][keyHost][0], metricLists[key][keyHost][1], '-', label=keyHost)
+        pyplot.plot_date(metricLists[key][keyHost][0], metricLists[key][keyHost][1], '-', label=keyHost, tz=tzlocal())
       pyplot.ylabel("Metric: " + key)
       pyplot.xlabel("Time")
       pyplot.xticks(rotation='vertical')
-      pyplot.gcf().subplots_adjust(bottom=0.15)
       fig.autofmt_xdate()
       pyplot.ticklabel_format()
       pyplot.gca().get_xaxis().get_major_formatter().scaled[1/(24.*60.)] = '%H:%M:%S'
-      pyplot.legend()
+      lgd = pyplot.legend(loc='upper right', bbox_to_anchor=(1.6,0.9))
+      pyplot.tight_layout()
+      pyplot.subplots_adjust(right=0.6)
       pyplot.savefig("figure-" + key + ".png")
       pyplot.close()
 
@@ -101,7 +104,7 @@ class Process:
         continue
       splitString = line.split(" ",1)
       if len(splitString) != 2:
-        print("Was not able to split: " + line)
+        logging.warning("Was not able to split: " + line)
         continue
       self.datapoints.append(DataPoint(host=self.host, metric=self.metric, time=splitString[0], value=splitString[1]))
 
@@ -109,11 +112,26 @@ class Process:
     for point in self.datapoints:
       print point.host.name.strip() + " | " + point.metric.strip() + " | " + point.time.strip() + " | " + point.value.strip()
 
+  def get_graph_list(metrics, hosts):
+    result = list()
+    for point in self.datapoints:
+      if point.metric.name in metrics:
+        if point.host.name in hosts:
+          result.append((point.time, point.value, point.host.name))
+    return result
+
 def main(args):
+  parser = OptionParser()
+  parser.add_option("-s", "--start", dest="start_time", default="now-1d", help="Start time for graph")
+  parser.add_option("-e", "--end", dest="end_time", default="now", help="End time for graph")
+  parser.add_option("-c", "--config", dest="config_file", default="default.conf", help="Configuration file")
+
+  (options,args) = parser.parse_args()
+
   timeFile = open('time_data', 'w')
 
   config = ConfigParser.ConfigParser()
-  config.read("default.conf")
+  config.read(options.config_file)
   hosts = dict()
   metrics = list()
 
@@ -121,7 +139,7 @@ def main(args):
     hosts[item] = Host(value)
 
   for item,value in config.items("Metrics"):
-    metrics.append(Metric(value))
+    metrics.append(Metric(value, start=options.start_time, end=options.end_time))
 
   rootrrdpath = config.get("Paths", "root_rrd")
 
