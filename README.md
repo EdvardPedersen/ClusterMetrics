@@ -15,8 +15,12 @@ Usage
 * Modify the default.conf file to match your setup, and the metrics you want to use
 * Run get_metrics.py
 
+Extras
+=========
+iostat_script.py and iowait.pyconf are scripts to add iostat information to ganglia
+
 TODO
 ===========
-* Allow user to specify time frame
 * Implement output in different formats
 * Integrate with ganglia XML output to enhance parsing
+
