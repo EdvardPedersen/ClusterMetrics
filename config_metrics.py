@@ -20,6 +20,9 @@ config.set('Paths', 'root_rrd', '/var/lib/ganglia/rrds/ice2/')
 config.add_section('Metrics')
 config.set('Metrics', 'metric1', 'cpu_idle')
 
+config.add_section('Groups')
+config.set('Groups', 'group1', "ice2.local compute-0-0.local cpu_idle iowait")
+
 
 with open('default.conf', 'wb') as configf:
   config.write(configf)

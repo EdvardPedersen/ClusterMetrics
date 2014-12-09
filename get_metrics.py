@@ -15,21 +15,34 @@ sys.path.append(egg_path)
 sys.path.append(egg_path2)
 from matplotlib import pyplot
 from matplotlib import dates
+from mpl_toolkits.axes_grid1 import host_subplot
+import mpl_toolkits.axisartist as AA
 from optparse import OptionParser
 from dateutil.tz import *
 #import numpy
+
+class Group:
+  def __init__(self, metrics_hosts=list(), name="group"):
+    self.data = metrics_hosts
+    self.name=name
 
   
 class Output:
   def __init__(self, format="text", processes=list()):
     self.input = processes
     self.format = format
+    self.graphdata = dict()
 
-  def generate(self):
+  def generate(self, groups=None):
+    if(len(self.graphdata) < 1):
+      self.graphdata = self._getgraph()
     if(self.format == "text"):
       self._gettext()
     elif(self.format == "png"):
-      self._getgraph()
+      if not groups:
+        self._showgraph(self.graphdata)
+      else:
+        self._showgroupgraph(self.graphdata, groups)
 
   def _gettext(self):
     for entry in self.input:
@@ -49,13 +62,16 @@ class Output:
           metricLists[entry.metric.name][entry.host.name][0].append(dates.epoch2num(int(datapoint.time.strip(':'))))
           metricLists[entry.metric.name][entry.host.name][1].append(float(datapoint.value))
         except Exception:
-          logging.warning("Ignored datapoint due to exception: " + str(sys.exc_info()))
+          logging.info("Ignored datapoint due to exception: " + str(sys.exc_info()))
           continue
-    self._showgraph(metricLists)
+#    self._showgraph(metricLists)
+    return metricLists
 
   def _showgraph(self, metricLists):
+    # For every metric
     for key in metricLists.keys():
       fig = pyplot.figure(figsize=(10,5))
+      # For every host
       for keyHost in metricLists[key].keys():
         pyplot.plot_date(metricLists[key][keyHost][0], metricLists[key][keyHost][1], '-', label=keyHost, tz=tzlocal())
       pyplot.ylabel("Metric: " + key)
@@ -69,6 +85,51 @@ class Output:
       pyplot.subplots_adjust(right=0.6)
       pyplot.savefig("figure-" + key + ".png")
       pyplot.close()
+
+  def _showgroupgraph(self, metricLists, group):
+    fig = pyplot.figure(figsize=(10,5))
+    axis_dict = dict()
+    styles = ['--','-.',':','-']
+    #host = host_subplot(111, axes_class=AA.Axes)
+    for key in metricLists.keys():
+      if(key not in group.data):
+        logging.warning(key + " is not in group: " + str(group))
+        continue
+      if key not in axis_dict.keys():
+        if len(axis_dict.keys()) < 1:
+          pyplot.axes().set_ylabel("Metric: " + key)
+          axis_dict[key] = (styles.pop(), pyplot.axes())
+        else:
+          newax = pyplot.axes().twinx()
+          newax.set_frame_on(True)
+          newax.patch.set_visible(False)
+          newax.set_ylabel("Metric: " + key)
+          axis_dict[key] = (styles.pop(), newax)
+      # For every host
+      for keyHost in metricLists[key].keys():
+        if keyHost not in group.data:
+          logging.warning(keyHost + " is not in group")
+          continue
+        axis_dict[key][1].plot_date(metricLists[key][keyHost][0], metricLists[key][keyHost][1], axis_dict[key][0], label=keyHost + "-" + key, tz=tzlocal())
+    pyplot.xlabel("Time")
+    pyplot.xticks(rotation='vertical')
+    fig.autofmt_xdate()
+    pyplot.ticklabel_format()
+    pyplot.gca().get_xaxis().get_major_formatter().scaled[1/(24.*60.)] = '%H:%M:%S'
+   
+    legendLines = list()
+    legendLabels = list()
+    for legends in axis_dict.keys():
+      tempLines, tempLabels = axis_dict[legends][1].get_legend_handles_labels()
+      legendLines += tempLines
+      legendLabels += tempLabels
+
+    lgd = pyplot.legend(legendLines, legendLabels,loc='upper left', bbox_to_anchor=(1.2,0.9))
+    pyplot.tight_layout()
+    pyplot.subplots_adjust(right=0.6)
+    pyplot.savefig("figure-"+ group.name +".png", bbox_extra_artists=[lgd], bbox_inches='tight')
+    pyplot.close()
+      
 
 class Metric:
   def __init__(self, name="", start="end-6000s", end="now"):
@@ -134,12 +195,18 @@ def main(args):
   config.read(options.config_file)
   hosts = dict()
   metrics = list()
+  groups = list()
 
   for item, value in config.items("Hosts"):
     hosts[item] = Host(value)
 
   for item,value in config.items("Metrics"):
     metrics.append(Metric(value, start=options.start_time, end=options.end_time))
+
+  for item,value in config.items("Groups"):
+    groups.append(Group(value.split(), item))
+
+  print groups[0].data
 
   rootrrdpath = config.get("Paths", "root_rrd")
 
@@ -156,6 +223,7 @@ def main(args):
 
   output = Output("png", processes)
   output.generate()
+  output.generate(groups[0])
 
 if __name__ == "__main__":
     main(sys.argv[1:])
