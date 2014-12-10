@@ -8,6 +8,7 @@ import subprocess
 import shlex
 import numpy
 import logging
+import json
 
 egg_path='/home/epe005/gepan_experiments/helper_scripts/ClusterMetrics/testmat/matplotlib-1.4.2/distribute-0.6.28-py2.6.egg'
 egg_path2='/home/epe005/gepan_experiments/helper_scripts/ClusterMetrics/testmat/matplotlib-1.4.2/numpy-1.9.1/dist/numpy-1.9.1-py2.6-linux-x86_64.egg'
@@ -28,14 +29,18 @@ class Group:
 
   
 class Output:
-  def __init__(self, format="text", processes=list()):
+  def __init__(self, format="text", processes=list(), from_file=None):
     self.input = processes
     self.format = format
     self.graphdata = dict()
+    self.from_file = from_file
 
   def generate(self, groups=None):
     if(len(self.graphdata) < 1):
-      self.graphdata = self._getgraph()
+      if(self.from_file == None):
+        self.graphdata = self._getgraph()
+      else:
+        self.import_file(self.from_file)
     if(self.format == "text"):
       self._gettext()
     elif(self.format == "png"):
@@ -65,6 +70,7 @@ class Output:
           logging.info("Ignored datapoint due to exception: " + str(sys.exc_info()))
           continue
 #    self._showgraph(metricLists)
+    self.metricLists = metricLists
     return metricLists
 
   def _showgraph(self, metricLists):
@@ -98,12 +104,14 @@ class Output:
       if key not in axis_dict.keys():
         if len(axis_dict.keys()) < 1:
           pyplot.axes().set_ylabel("Metric: " + key)
+          pyplot.axes().set_ybound(lower=0)
           axis_dict[key] = (styles.pop(), pyplot.axes())
         else:
           newax = pyplot.axes().twinx()
           newax.set_frame_on(True)
           newax.patch.set_visible(False)
           newax.set_ylabel("Metric: " + key)
+          newax.set_ybound(lower=0)
           axis_dict[key] = (styles.pop(), newax)
       # For every host
       for keyHost in metricLists[key].keys():
@@ -111,6 +119,8 @@ class Output:
           logging.warning(keyHost + " is not in group")
           continue
         axis_dict[key][1].plot_date(metricLists[key][keyHost][0], metricLists[key][keyHost][1], axis_dict[key][0], label=keyHost + "-" + key, tz=tzlocal())
+    if(len(axis_dict) < 1):
+      return
     pyplot.xlabel("Time")
     pyplot.xticks(rotation='vertical')
     fig.autofmt_xdate()
@@ -129,6 +139,16 @@ class Output:
     pyplot.subplots_adjust(right=0.6)
     pyplot.savefig("figure-"+ group.name +".png", bbox_extra_artists=[lgd], bbox_inches='tight')
     pyplot.close()
+
+  def export_file(self, file):
+    f = open(file, 'w')
+    json.dump(self.graphdata, f)
+    f.close()
+
+  def import_file(self, file):
+    f = open(file, 'r')
+    self.graphdata = json.load(f)
+    f.close()
       
 
 class Metric:
@@ -186,12 +206,14 @@ def main(args):
   parser.add_option("-s", "--start", dest="start_time", default="now-1d", help="Start time for graph")
   parser.add_option("-e", "--end", dest="end_time", default="now", help="End time for graph")
   parser.add_option("-c", "--config", dest="config_file", default="default.conf", help="Configuration file")
+  parser.add_option("-i", "--input", dest="input_file", help="Input file from previous run")
+  parser.add_option("-o", "--output", dest="output_file", help="Output file for raw data (to re-analyze later)")
 
   (options,args) = parser.parse_args()
 
   timeFile = open('time_data', 'w')
 
-  config = ConfigParser.ConfigParser()
+  config = ConfigParser.SafeConfigParser()
   config.read(options.config_file)
   hosts = dict()
   metrics = list()
@@ -206,24 +228,26 @@ def main(args):
   for item,value in config.items("Groups"):
     groups.append(Group(value.split(), item))
 
-  print groups[0].data
-
   rootrrdpath = config.get("Paths", "root_rrd")
 
   processes = list()
 
   command_queue = dict()
+  if(not options.input_file):
+    for host in hosts.keys():
+      for metric in metrics:
+        processes.append(Process(host=hosts[host], metric=metric, rootrrd=rootrrdpath))
 
-  for host in hosts.keys():
-    for metric in metrics:
-      processes.append(Process(host=hosts[host], metric=metric, rootrrd=rootrrdpath))
+    for process in processes:
+      process.get_data()
 
-  for process in processes:
-    process.get_data()
-
-  output = Output("png", processes)
-  output.generate()
-  output.generate(groups[0])
+  output = Output("png", processes, from_file=options.input_file)
+  #output.generate()
+  for group in groups:
+    print str(group)
+    output.generate(group)
+  if(options.output_file):
+    output.export_file(options.output_file)
 
 if __name__ == "__main__":
     main(sys.argv[1:])

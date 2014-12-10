@@ -8,9 +8,23 @@ modules {
 collection_group {
   collect_every = 5
   time_threshold = 50
+
   metric {
     name = "iowait"
     title = "IO wait"
     value_threshold = 10.0
   }
+
+  metric {
+    name = "diskread"
+    title = "Disk read MiB per second"
+    value_threshold = 500.0
+  }
+
+  metric {
+    name = "diskwrite"
+    title = "Disk write MiB per second"
+    value_threshold = 500.0
+  }
+
 }
