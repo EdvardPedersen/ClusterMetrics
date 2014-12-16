@@ -9,6 +9,7 @@ import shlex
 import numpy
 import logging
 import json
+from collections import defaultdict
 
 egg_path='/home/epe005/gepan_experiments/helper_scripts/ClusterMetrics/testmat/matplotlib-1.4.2/distribute-0.6.28-py2.6.egg'
 egg_path2='/home/epe005/gepan_experiments/helper_scripts/ClusterMetrics/testmat/matplotlib-1.4.2/numpy-1.9.1/dist/numpy-1.9.1-py2.6-linux-x86_64.egg'
@@ -96,8 +97,13 @@ class Output:
     fig = pyplot.figure(figsize=(10,5))
     axis_dict = dict()
     styles = ['--','-.',':','-']
+    stacking = False
+    if("stack" in group.data):
+      stacking = True
+    prevAggr = defaultdict(float)
     #host = host_subplot(111, axes_class=AA.Axes)
     for key in metricLists.keys():
+      aggregatey = defaultdict(float)
       if(key not in group.data):
         logging.warning(key + " is not in group: " + str(group))
         continue
@@ -118,7 +124,19 @@ class Output:
         if keyHost not in group.data:
           logging.warning(keyHost + " is not in group")
           continue
-        axis_dict[key][1].plot_date(metricLists[key][keyHost][0], metricLists[key][keyHost][1], axis_dict[key][0], label=keyHost + "-" + key, tz=tzlocal())
+        if stacking:
+          logging.warning("Stacking")
+          prevAggr = aggregatey.copy()
+          for x in xrange(len(metricLists[key][keyHost][0])):
+            aggregatey[metricLists[key][keyHost][0][x]] += metricLists[key][keyHost][1][x]
+        else:
+          logging.warning("Not stacking")
+          aggregatey = defaultdict(float)
+          for x in xrange(len(metricLists[key][keyHost][0])):
+            aggregatey[metricLists[key][keyHost][0][x]] = metricLists[key][keyHost][1][x]
+        lineadded = axis_dict[key][1].plot_date(metricLists[key][keyHost][0], [aggregatey[x] for x in sorted(aggregatey.keys())], axis_dict[key][0], label=keyHost + "-" + key, tz=tzlocal())
+        if stacking:
+          axis_dict[key][1].fill_between(metricLists[key][keyHost][0], [aggregatey[x] for x in metricLists[key][keyHost][0]], [prevAggr[y] for y in metricLists[key][keyHost][0]], color=lineadded[0].get_color())
     if(len(axis_dict) < 1):
       return
     pyplot.xlabel("Time")
