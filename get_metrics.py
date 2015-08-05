@@ -105,7 +105,7 @@ class Output:
     for key in metricLists.keys():
       aggregatey = defaultdict(float)
       if(key not in group.data):
-        logging.warning(key + " is not in group: " + str(group))
+        logging.debug(key + " is not in group: " + str(group))
         continue
       if key not in axis_dict.keys():
         if len(axis_dict.keys()) < 1:
@@ -122,15 +122,15 @@ class Output:
       # For every host
       for keyHost in metricLists[key].keys():
         if keyHost not in group.data:
-          logging.warning(keyHost + " is not in group")
+          logging.debug(keyHost + " is not in group")
           continue
         if stacking:
-          logging.warning("Stacking")
+          logging.debug("Stacking")
           prevAggr = aggregatey.copy()
           for x in xrange(len(metricLists[key][keyHost][0])):
             aggregatey[metricLists[key][keyHost][0][x]] += metricLists[key][keyHost][1][x]
         else:
-          logging.warning("Not stacking")
+          logging.debug("Not stacking")
           aggregatey = defaultdict(float)
           for x in xrange(len(metricLists[key][keyHost][0])):
             aggregatey[metricLists[key][keyHost][0][x]] = metricLists[key][keyHost][1][x]
@@ -191,7 +191,8 @@ class Process:
     self.host=host
     self.metric=metric
     self.datapoints = list()
-    self.command_string = "rrdtool fetch " + rootrrd + host.name + "/" + metric.name + ".rrd AVERAGE -e " + metric.stop + " -s " + metric.start
+    self.command_string = "rrdtool fetch " + rootrrd + host.name + "/" + metric.name + ".rrd AVERAGE -e '" + metric.stop + "' -s '" + metric.start + "'"
+    #print(self.command_string)
     self.host_process = subprocess.Popen( shlex.split(self.command_string) ,stdout=subprocess.PIPE)
 
   def get_data(self):
@@ -229,6 +230,8 @@ def main(args):
 
   (options,args) = parser.parse_args()
 
+  print(options.start_time)
+
   timeFile = open('time_data', 'w')
 
   config = ConfigParser.SafeConfigParser()
@@ -262,7 +265,7 @@ def main(args):
   output = Output("png", processes, from_file=options.input_file)
   #output.generate()
   for group in groups:
-    print str(group)
+    #print str(group)
     output.generate(group)
   if(options.output_file):
     output.export_file(options.output_file)
